@@ -520,17 +520,32 @@ mod tests {
         let paths = vec![reviewed.to_string_lossy().into_owned()];
         let installers = from_reviewed_paths(&paths, &roots).unwrap();
         assert_eq!(installers.len(), 1);
+        let remover_calls = std::cell::Cell::new(0);
         let outcome = execute_checked_with_remover(
             &installers,
             true,
             |path, _| {
+                remover_calls.set(remover_calls.get() + 1);
                 assert_eq!(path, reviewed);
                 std::fs::remove_file(path).unwrap();
                 Ok(Removal::Removed)
             },
             |path| reviewed_source(path, &roots).is_some(),
         );
-        assert_eq!(outcome.removed.len(), 1);
+        assert!(outcome.errors.is_empty());
+        if crate::clean::validate::RAILS_SPEAK_THIS_PLATFORMS_PATHS {
+            assert_eq!(outcome.removed.len(), 1);
+            assert!(outcome.protected.is_empty());
+            assert_eq!(remover_calls.get(), 1);
+            assert!(!reviewed.exists());
+        } else {
+            // Reviewed-path selection works on Windows, but apply still refuses paths outside
+            // the POSIX protection tables before reaching even an injected remover.
+            assert!(outcome.removed.is_empty());
+            assert_eq!(outcome.protected, paths);
+            assert_eq!(remover_calls.get(), 0);
+            assert!(reviewed.exists());
+        }
         assert!(late.exists());
         let deep = root.join("a/b/deep.dmg");
         std::fs::create_dir_all(deep.parent().unwrap()).unwrap();

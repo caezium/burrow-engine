@@ -648,18 +648,33 @@ mod tests {
             artifacts.iter().map(|a| &a.path).collect::<Vec<_>>(),
             paths.iter().collect::<Vec<_>>()
         );
+        let remover_calls = std::cell::Cell::new(0);
         let outcome = execute_checked_with_remover(
             &artifacts,
             true,
             |_| {},
             |path, _| {
+                remover_calls.set(remover_calls.get() + 1);
                 assert_eq!(path, reviewed);
                 std::fs::remove_dir_all(path).unwrap();
                 Ok(Removal::Removed)
             },
             |path| reviewed_path_allowed(path, &roots),
         );
-        assert_eq!(outcome.removed.len(), 1);
+        assert!(outcome.errors.is_empty());
+        if crate::clean::validate::RAILS_SPEAK_THIS_PLATFORMS_PATHS {
+            assert_eq!(outcome.removed.len(), 1);
+            assert!(outcome.protected.is_empty());
+            assert_eq!(remover_calls.get(), 1);
+            assert!(!reviewed.exists());
+        } else {
+            // Reviewed-path selection works on Windows, but apply still refuses paths outside
+            // the POSIX protection tables before reaching even an injected remover.
+            assert!(outcome.removed.is_empty());
+            assert_eq!(outcome.protected, paths);
+            assert_eq!(remover_calls.get(), 0);
+            assert!(reviewed.is_dir());
+        }
         assert!(
             late.is_dir(),
             "a candidate discovered after review must stay outside apply"
