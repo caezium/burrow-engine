@@ -1,0 +1,9 @@
+{
+ "ok": true,
+ "burrow_cli": "0.0.1",
+ "engine": "fclones",
+ "command": "dupes",
+ "data": {
+  "text": ""
+ }
+}

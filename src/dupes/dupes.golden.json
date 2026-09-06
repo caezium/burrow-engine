@@ -1,0 +1,41 @@
+{
+  "groups": [
+    {
+      "file_hash": "79b48c683e1946ba1171a80bd4ca2071",
+      "file_len": 9600,
+      "files": [
+        "/private/tmp/dupes_fixture/a/one.bin",
+        "/private/tmp/dupes_fixture/b/one_copy.bin"
+      ]
+    },
+    {
+      "file_hash": "3c8ce0b73e4e9a42d428222c873b61b9",
+      "file_len": 7200,
+      "files": [
+        "/private/tmp/dupes_fixture/a/two.bin",
+        "/private/tmp/dupes_fixture/b/two_copy.bin"
+      ]
+    }
+  ],
+  "header": {
+    "base_dir": "/tmp/dupes_fixture",
+    "command": [
+      "fclones",
+      "group",
+      "--format",
+      "json",
+      "/tmp/dupes_fixture"
+    ],
+    "stats": {
+      "group_count": 2,
+      "missing_file_count": 0,
+      "missing_file_size": 0,
+      "redundant_file_count": 2,
+      "redundant_file_size": 16800,
+      "total_file_count": 4,
+      "total_file_size": 33600
+    },
+    "timestamp": "2026-01-01T00:00:00.000000+00:00",
+    "version": "0.35.0"
+  }
+}

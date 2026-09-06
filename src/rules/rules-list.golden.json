@@ -1,0 +1,56 @@
+{
+ "apps": [
+  {
+   "app": "Alpha",
+   "bundle_ids": [
+    "com.burrow.fixture.alpha",
+    "com.burrow.fixture.alpha.helper"
+   ],
+   "file": "com.burrow.fixture.alpha.json",
+   "provenance": "builtin",
+   "rules": [
+    {
+     "category": "cache",
+     "default_selected": true,
+     "id": "alpha.cache",
+     "risk": "safe"
+    },
+    {
+     "category": "dev-artifact",
+     "default_selected": false,
+     "id": "alpha.archives",
+     "risk": "risky"
+    },
+    {
+     "category": "log",
+     "default_selected": true,
+     "id": "alpha.aged",
+     "risk": "safe"
+    },
+    {
+     "category": "cache",
+     "default_selected": true,
+     "id": "alpha.big",
+     "risk": "safe"
+    }
+   ]
+  },
+  {
+   "app": "Beta",
+   "bundle_ids": [
+    "com.burrow.fixture.beta"
+   ],
+   "file": "com.burrow.fixture.beta.json",
+   "provenance": "community",
+   "rules": [
+    {
+     "category": "history",
+     "default_selected": false,
+     "id": "beta.history",
+     "risk": "caution"
+    }
+   ]
+  }
+ ],
+ "count": 2
+}

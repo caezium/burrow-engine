@@ -1,0 +1,125 @@
+{
+  "by_total_bytes": [
+    {
+      "bytes_in": 15000000,
+      "bytes_out": 1500000,
+      "metric_source": "macos_nettop_bytes",
+      "name": "fixture-network-process-01",
+      "pid": 2000,
+      "total": 16500000
+    },
+    {
+      "bytes_in": 14000000,
+      "bytes_out": 1400000,
+      "metric_source": "macos_nettop_bytes",
+      "name": "fixture-network-process-02",
+      "pid": 2001,
+      "total": 15400000
+    },
+    {
+      "bytes_in": 13000000,
+      "bytes_out": 1300000,
+      "metric_source": "macos_nettop_bytes",
+      "name": "fixture-network-process-03",
+      "pid": 2002,
+      "total": 14300000
+    },
+    {
+      "bytes_in": 12000000,
+      "bytes_out": 1200000,
+      "metric_source": "macos_nettop_bytes",
+      "name": "fixture-network-process-04",
+      "pid": 2003,
+      "total": 13200000
+    },
+    {
+      "bytes_in": 11000000,
+      "bytes_out": 1100000,
+      "metric_source": "macos_nettop_bytes",
+      "name": "fixture-network-process-05",
+      "pid": 2004,
+      "total": 12100000
+    },
+    {
+      "bytes_in": 10000000,
+      "bytes_out": 1000000,
+      "metric_source": "macos_nettop_bytes",
+      "name": "fixture-network-process-06",
+      "pid": 2005,
+      "total": 11000000
+    },
+    {
+      "bytes_in": 9000000,
+      "bytes_out": 900000,
+      "metric_source": "macos_nettop_bytes",
+      "name": "fixture-network-process-07",
+      "pid": 2006,
+      "total": 9900000
+    },
+    {
+      "bytes_in": 8000000,
+      "bytes_out": 800000,
+      "metric_source": "macos_nettop_bytes",
+      "name": "fixture-network-process-08",
+      "pid": 2007,
+      "total": 8800000
+    },
+    {
+      "bytes_in": 7000000,
+      "bytes_out": 700000,
+      "metric_source": "macos_nettop_bytes",
+      "name": "fixture-network-process-09",
+      "pid": 2008,
+      "total": 7700000
+    },
+    {
+      "bytes_in": 6000000,
+      "bytes_out": 600000,
+      "metric_source": "macos_nettop_bytes",
+      "name": "fixture-network-process-10",
+      "pid": 2009,
+      "total": 6600000
+    },
+    {
+      "bytes_in": 5000000,
+      "bytes_out": 500000,
+      "metric_source": "macos_nettop_bytes",
+      "name": "fixture-network-process-11",
+      "pid": 2010,
+      "total": 5500000
+    },
+    {
+      "bytes_in": 4000000,
+      "bytes_out": 400000,
+      "metric_source": "macos_nettop_bytes",
+      "name": "fixture-network-process-12",
+      "pid": 2011,
+      "total": 4400000
+    },
+    {
+      "bytes_in": 3000000,
+      "bytes_out": 300000,
+      "metric_source": "macos_nettop_bytes",
+      "name": "fixture-network-process-13",
+      "pid": 2012,
+      "total": 3300000
+    },
+    {
+      "bytes_in": 2000000,
+      "bytes_out": 200000,
+      "metric_source": "macos_nettop_bytes",
+      "name": "fixture-network-process-14",
+      "pid": 2013,
+      "total": 2200000
+    },
+    {
+      "bytes_in": 1000000,
+      "bytes_out": 100000,
+      "metric_source": "macos_nettop_bytes",
+      "name": "fixture-network-process-15",
+      "pid": 2014,
+      "total": 1100000
+    }
+  ],
+  "count": 15
+}

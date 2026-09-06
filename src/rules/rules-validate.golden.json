@@ -1,0 +1,12 @@
+{
+ "files": 3,
+ "problems": [
+  {
+   "errors": [
+    "rule parse error: EOF while parsing an object at line 2 column 0"
+   ],
+   "file": "zz-broken.json"
+  }
+ ],
+ "valid": 2
+}

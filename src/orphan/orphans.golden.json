@@ -1,0 +1,42 @@
+{
+ "count": 3,
+ "installed_count": 113,
+ "inventory_sources": {
+  "applications_dir": 113
+ },
+ "orphans": [
+  {
+   "confidence": "medium",
+   "default_selected": false,
+   "evidence": [
+    "app-artifact-shaped",
+    "not-matched-to-installed-inventory"
+   ],
+   "name": "com.acme.definitelynotinstalled",
+   "path": "/tmp/orphans_fixture/com.acme.definitelynotinstalled"
+  },
+  {
+   "confidence": "medium",
+   "default_selected": false,
+   "evidence": [
+    "app-artifact-shaped",
+    "not-matched-to-installed-inventory"
+   ],
+   "name": "com.example.ghostapp",
+   "path": "/tmp/orphans_fixture/com.example.ghostapp"
+  },
+  {
+   "confidence": "medium",
+   "default_selected": false,
+   "evidence": [
+    "app-artifact-shaped",
+    "not-matched-to-installed-inventory"
+   ],
+   "name": "org.nonexistent.vendor.tool",
+   "path": "/tmp/orphans_fixture/org.nonexistent.vendor.tool"
+  }
+ ],
+ "roots": [
+  "/tmp/orphans_fixture"
+ ]
+}

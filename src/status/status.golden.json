@@ -1,0 +1,235 @@
+{
+  "collected_at": "2026-01-01T00:00:00.000000+00:00",
+  "host": "fixture-mac",
+  "platform": "darwin 24.0.0",
+  "uptime": "1d 2h",
+  "uptime_seconds": 93600,
+  "procs": 400,
+  "hardware": {
+    "model": "Fixture Mac",
+    "cpu_model": "Fixture CPU",
+    "total_ram": "16.0 GB",
+    "disk_size": "512.0 GB",
+    "os_version": "macOS Fixture",
+    "refresh_rate": ""
+  },
+  "health_score": 73,
+  "health_score_msg": "Good: Disk Almost Full",
+  "cpu": {
+    "usage": 33.57142857142857,
+    "per_core": [
+      20.0,
+      30.0,
+      40.0,
+      50.0,
+      20.0,
+      30.0,
+      40.0,
+      50.0,
+      20.0,
+      30.0,
+      40.0,
+      50.0,
+      20.0,
+      30.0
+    ],
+    "per_core_estimated": false,
+    "load1": 2.0,
+    "load5": 1.5,
+    "load15": 1.0,
+    "core_count": 14,
+    "logical_cpu": 14,
+    "p_core_count": 10,
+    "e_core_count": 4
+  },
+  "gpu": [
+    {
+      "name": "Fixture GPU 1",
+      "usage": -1,
+      "memory_used": 0,
+      "memory_total": 0,
+      "core_count": 20,
+      "note": "sppci_vendor_Apple"
+    }
+  ],
+  "memory": {
+    "used": 12884901888,
+    "total": 17179869184,
+    "available": 4294967296,
+    "used_percent": 75.0,
+    "swap_used": 1073741824,
+    "swap_total": 2147483648,
+    "cached": 1073741824,
+    "pressure": ""
+  },
+  "disks": [
+    {
+      "mount": "/",
+      "device": "/dev/disk1s1",
+      "used": 538760697610,
+      "total": 549755813888,
+      "used_percent": 97.99999999995634,
+      "fstype": "apfs",
+      "external": false
+    },
+    {
+      "mount": "/Volumes/FixtureVolume1",
+      "device": "/dev/disk2s1",
+      "used": 12884901888,
+      "total": 17179869184,
+      "used_percent": 75.0,
+      "fstype": "apfs",
+      "external": true
+    }
+  ],
+  "trash_size": 1048576,
+  "trash_approx": false,
+  "disk_io": {
+    "read_rate": 0,
+    "write_rate": 0
+  },
+  "network": [
+    {
+      "name": "en0",
+      "rx_rate_mbs": 0.125,
+      "tx_rate_mbs": 0.0625,
+      "ip": "192.0.2.10"
+    },
+    {
+      "name": "en1",
+      "rx_rate_mbs": 0,
+      "tx_rate_mbs": 0,
+      "ip": ""
+    },
+    {
+      "name": "en2",
+      "rx_rate_mbs": 0,
+      "tx_rate_mbs": 0,
+      "ip": ""
+    }
+  ],
+  "network_history": {
+    "rx_history": [
+      0.125
+    ],
+    "tx_history": [
+      0.0625
+    ]
+  },
+  "proxy": {
+    "enabled": true,
+    "type": "HTTP",
+    "host": "proxy.example:8080"
+  },
+  "batteries": [
+    {
+      "percent": 100,
+      "status": "discharging",
+      "time_left": "4:00",
+      "health": "Good",
+      "cycle_count": 100,
+      "capacity": 95
+    }
+  ],
+  "thermal": {
+    "cpu_temp": 0,
+    "gpu_temp": 0,
+    "battery_temp": 30.0,
+    "fan_speed": 0,
+    "fan_count": 0,
+    "system_power": 0,
+    "adapter_power": 0,
+    "battery_power": -20.0
+  },
+  "sensors": null,
+  "bluetooth": [
+    {
+      "name": "Fixture Bluetooth Device 1",
+      "connected": false,
+      "battery": ""
+    },
+    {
+      "name": "Fixture Bluetooth Device 2",
+      "connected": false,
+      "battery": ""
+    },
+    {
+      "name": "Fixture Bluetooth Device 3",
+      "connected": false,
+      "battery": ""
+    },
+    {
+      "name": "Fixture Bluetooth Device 4",
+      "connected": false,
+      "battery": ""
+    },
+    {
+      "name": "Fixture Bluetooth Device 5",
+      "connected": false,
+      "battery": ""
+    },
+    {
+      "name": "Fixture Bluetooth Device 6",
+      "connected": false,
+      "battery": ""
+    },
+    {
+      "name": "Fixture Bluetooth Device 7",
+      "connected": false,
+      "battery": ""
+    }
+  ],
+  "top_processes": [
+    {
+      "pid": 1001,
+      "ppid": 1,
+      "name": "Fixture Process 1",
+      "command": "/Applications/Fixture Process 1.app/Contents/MacOS/FixtureProcess1",
+      "cpu": 45.0,
+      "memory": 1.0,
+      "memory_bytes": 1048576
+    },
+    {
+      "pid": 1002,
+      "ppid": 1,
+      "name": "Fixture Process 2",
+      "command": "/Applications/Fixture Process 2.app/Contents/MacOS/FixtureProcess2",
+      "cpu": 40.0,
+      "memory": 2.0,
+      "memory_bytes": 2097152
+    },
+    {
+      "pid": 1003,
+      "ppid": 1,
+      "name": "Fixture Process 3",
+      "command": "/Applications/Fixture Process 3.app/Contents/MacOS/FixtureProcess3",
+      "cpu": 35.0,
+      "memory": 3.0,
+      "memory_bytes": 3145728
+    },
+    {
+      "pid": 1004,
+      "ppid": 1,
+      "name": "Fixture Process 4",
+      "command": "/Applications/Fixture Process 4.app/Contents/MacOS/FixtureProcess4",
+      "cpu": 30.0,
+      "memory": 4.0,
+      "memory_bytes": 4194304
+    },
+    {
+      "pid": 1005,
+      "ppid": 1,
+      "name": "Fixture Process 5",
+      "command": "/Applications/Fixture Process 5.app/Contents/MacOS/FixtureProcess5",
+      "cpu": 25.0,
+      "memory": 5.0,
+      "memory_bytes": 5242880
+    }
+  ],
+  "process_watch": {
+    "enabled": true,
+    "cpu_threshold": 100,
+    "window": "5m0s"
+  },
+  "process_alerts": []
+}

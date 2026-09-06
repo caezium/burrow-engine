@@ -1,0 +1,22 @@
+{
+ "count": 4,
+ "trash": "/tmp/sentinel_fixture",
+ "trashed_apps": [
+  {
+   "name": "Bar",
+   "path": "/tmp/sentinel_fixture/Bar.app"
+  },
+  {
+   "name": "Foo",
+   "path": "/tmp/sentinel_fixture/Foo.app"
+  },
+  {
+   "name": "My App",
+   "path": "/tmp/sentinel_fixture/My App.app"
+  },
+  {
+   "name": "Zeta",
+   "path": "/tmp/sentinel_fixture/Zeta.app"
+  }
+ ]
+}

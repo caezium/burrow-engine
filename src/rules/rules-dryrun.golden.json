@@ -1,0 +1,51 @@
+{
+ "items": [
+  {
+   "app": "Alpha",
+   "default_selected": true,
+   "exists": true,
+   "method": "trash",
+   "path": "/tmp/rules_fixture/targets/alpha-cache",
+   "risk": "safe",
+   "rule": "alpha.cache"
+  },
+  {
+   "app": "Alpha",
+   "default_selected": false,
+   "exists": false,
+   "method": "remove",
+   "path": "/tmp/rules_fixture/targets/absent-archives",
+   "risk": "risky",
+   "rule": "alpha.archives"
+  },
+  {
+   "app": "Alpha",
+   "condition_met": false,
+   "default_selected": false,
+   "exists": true,
+   "method": "trash",
+   "path": "/tmp/rules_fixture/targets/aged.log",
+   "risk": "safe",
+   "rule": "alpha.aged"
+  },
+  {
+   "app": "Alpha",
+   "condition_met": true,
+   "default_selected": true,
+   "exists": true,
+   "method": "trash",
+   "path": "/tmp/rules_fixture/targets/big.bin",
+   "risk": "safe",
+   "rule": "alpha.big"
+  },
+  {
+   "app": "Beta",
+   "default_selected": false,
+   "exists": true,
+   "method": "remove",
+   "path": "/tmp/rules_fixture/targets/alpha-cache/blob.bin",
+   "risk": "caution",
+   "rule": "beta.history"
+  }
+ ]
+}

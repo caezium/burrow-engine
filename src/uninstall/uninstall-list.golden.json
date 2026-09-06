@@ -1,0 +1,58 @@
+[
+  {
+    "bundle_id": "org.example.fixture.app1",
+    "name": "Example App 1",
+    "path": "/Applications/Example Suite/Example App 1.app",
+    "size": "10MB",
+    "source": "App",
+    "uninstall_name": "Example App 1"
+  },
+  {
+    "bundle_id": "org.example.fixture.app2",
+    "name": "Example App 2",
+    "path": "/Applications/Example Suite/Example App 2.app",
+    "size": "20MB",
+    "source": "App",
+    "uninstall_name": "Example App 2"
+  },
+  {
+    "bundle_id": "org.example.fixture.app3",
+    "name": "Example App 3",
+    "path": "/Applications/Example App 3.app",
+    "size": "30MB",
+    "source": "App",
+    "uninstall_name": "Example App 3"
+  },
+  {
+    "bundle_id": "org.example.fixture.app4",
+    "name": "ExampleApp4",
+    "path": "/Applications/ExampleApp4.app",
+    "size": "40MB",
+    "source": "Homebrew",
+    "uninstall_name": "exampleapp4"
+  },
+  {
+    "bundle_id": "org.example.fixture.app5",
+    "name": "ExampleApp5",
+    "path": "/Applications/ExampleApp5.app",
+    "size": "50MB",
+    "source": "Homebrew",
+    "uninstall_name": "exampleapp5"
+  },
+  {
+    "bundle_id": "org.example.fixture.app6",
+    "name": "ExampleApp6",
+    "path": "/Applications/ExampleApp6.app",
+    "size": "60MB",
+    "source": "Homebrew",
+    "uninstall_name": "exampleapp6"
+  },
+  {
+    "bundle_id": "org.example.fixture.app7",
+    "name": "ExampleApp7",
+    "path": "/Applications/ExampleApp7.app",
+    "size": "70MB",
+    "source": "Homebrew",
+    "uninstall_name": "exampleapp7"
+  }
+]

@@ -1,0 +1,35 @@
+[package]
+name = "burrow-engine"
+version = "0.1.0"
+edition = "2021"
+license-file = "LICENSE.md"
+description = "The Burrow core: the engine that powers the Burrow CLI and GUIs."
+publish = false
+
+[lib]
+name = "burrow_engine"
+path = "src/lib.rs"
+
+# The engine's own binary — what the app will eventually bundle and shell out to (replacing the
+# separate cli conductor + digger engine). Emits the stable Burrow envelope, same as the CLI.
+[[bin]]
+name = "burrow-engine"
+path = "src/main.rs"
+
+[dependencies]
+# Near-zero dependencies by policy — the engine is the thing everything else links, so every
+# dep here is forced on every Burrow surface. The ONE deliberate exception is image decoding:
+# `photos` perceptual-hash dedup needs to decode PNG/JPEG, which no subprocess/native path does
+# cleanly. Pure-Rust, png/jpeg only (default features off), permissive-licensed. Everything else
+# in the engine stays dependency-free (subprocess + hand-written parsers + the local json reader).
+image = { version = "0.25.10", default-features = false, features = ["png", "jpeg"] }
+
+# The SECOND sanctioned exception, and it is TARGET-SCOPED: `net` on Windows attributes
+# connections to processes through IP Helper (`GetExtendedTcpTable`/`GetExtendedUdpTable`,
+# `src/net/mod.rs::collect_windows_iphelper`), which has no subprocess equivalent — `netstat -ano`
+# is the fallback, not the source. Declared under `cfg(windows)` so a macOS or Linux build of the
+# engine, and of anything linking it, does not compile or link it. Cargo.lock still records all
+# target dependencies. Same three features burrow-cli used before #18 dropped the port.
+# Pure `std`, permissive (MIT / Apache-2.0), Microsoft-maintained bindings, no build script.
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_NetworkManagement_IpHelper", "Win32_Networking_WinSock"] }

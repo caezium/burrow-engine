@@ -1,0 +1,7 @@
+{
+ "ok": true,
+ "burrow_cli": "0.0.1",
+ "engine": "native",
+ "command": "photos",
+ "data": "<command-specific; judged separately per command>"
+}

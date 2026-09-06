@@ -1,0 +1,11 @@
+{
+ "ok": false,
+ "burrow_cli": "0.0.1",
+ "engine": "burrow-engine",
+ "command": "installer",
+ "error": {
+  "kind": "process_failed",
+  "message": "engine /Applications/Burrow.app/Contents/Resources/engine/mole exited exit status: 1: ",
+  "platform": "macos"
+ }
+}
