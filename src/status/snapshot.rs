@@ -311,6 +311,18 @@ pub(crate) fn collect_with_watch(
     watcher: &mut ProcessWatcher,
     elapsed: std::time::Duration,
 ) -> Snapshot {
+    // The app's polling fallback allows eight seconds for a complete response. Leave time for
+    // serialization while all optional probes share seven seconds, including their fallbacks.
+    crate::platform::with_command_budget(std::time::Duration::from_secs(7), || {
+        collect_with_watch_in_budget(sampler, watcher, elapsed)
+    })
+}
+
+fn collect_with_watch_in_budget(
+    sampler: &mut cpu::CpuSampler,
+    watcher: &mut ProcessWatcher,
+    elapsed: std::time::Duration,
+) -> Snapshot {
     // CPU FIRST, before any other collector runs — digger's `collectCPUInto` ordering (commit
     // a6d1a98): the reading is a delta over a window, and a window laid across the pass measures
     // the burst where `top`, `ps`, `system_profiler` and `ioreg` fan out — the collector watching
@@ -387,11 +399,19 @@ pub(crate) fn collect_with_watch(
         }
     };
     let disks = super::disk::dedupe_by_base_device(disks);
-    let disks = correct_disk_totals(disks);
+    let mut disk_info_cache = HashMap::new();
+    let mut disk_info = |mount: &str| {
+        cached_disk_info(mount, &mut disk_info_cache, &super::disk::get_diskutil_info)
+    };
+    let disks = correct_disk_totals(disks, &mut disk_info);
     let disks = super::disk::skip_tiny_volumes(disks);
     let disks = super::disk::dedupe_by_fstype_and_total(disks);
     let disks = super::disk::dedupe_by_base_device(disks);
-    let mut disks = correct_apfs_usages(disks);
+    let mut disks = correct_apfs_usages(
+        disks,
+        &mut disk_info,
+        super::disk::get_finder_startup_disk_free_bytes,
+    );
     enrich_disks_with_external(&mut disks);
     let disks = super::disk::sort_and_cap_disks(disks);
 
@@ -611,11 +631,27 @@ pub(crate) fn collect_with_watch(
 /// `collectDisksWithCorrections` calling `correctDiskTotalBytes` on every candidate partition
 /// BEFORE the <1GiB filter and the (fstype,total) dedupe (`metrics_disk.go:87-90`) — the corrected
 /// total is what those two downstream filters key on, so this must run before both, not after.
-fn correct_disk_totals(disks: Vec<DiskUsage>) -> Vec<DiskUsage> {
+fn cached_disk_info(
+    mount: &str,
+    cache: &mut HashMap<String, Option<String>>,
+    fetch: &impl Fn(&str) -> Option<String>,
+) -> Option<String> {
+    cache
+        .entry(mount.to_owned())
+        .or_insert_with(|| fetch(mount))
+        .clone()
+}
+
+fn correct_disk_totals(
+    disks: Vec<DiskUsage>,
+    info: &mut impl FnMut(&str) -> Option<String>,
+) -> Vec<DiskUsage> {
     disks
         .into_iter()
         .map(|mut d| {
-            let diskutil_total = super::disk::get_diskutil_total_bytes(&d.mount);
+            let diskutil_total = info(&d.mount).and_then(|text| {
+                super::disk::extract_plist_uint(&text, &["TotalSize", "DiskSize", "Size"]).ok()
+            });
             d.total = super::disk::correct_disk_total_bytes(d.total, diskutil_total);
             d
         })
@@ -658,19 +694,25 @@ fn correct_disk_totals(disks: Vec<DiskUsage>) -> Vec<DiskUsage> {
 /// flag and the independent oracle-free invariant agree instead of one silently overriding the
 /// other. This is not a second correction: the raw `free` reading is not touched or recomputed,
 /// only NOT overwritten with a value derived from the number we already know may be wrong.
-fn correct_apfs_usages(disks: Vec<DiskUsage>) -> Vec<DiskUsage> {
+fn correct_apfs_usages(
+    disks: Vec<DiskUsage>,
+    info: &mut impl FnMut(&str) -> Option<String>,
+    finder_free: impl Fn() -> Option<(u64, u64)>,
+) -> Vec<DiskUsage> {
     disks
         .into_iter()
         .map(|mut d| {
             if !d.fstype.eq_ignore_ascii_case("apfs") {
                 return d;
             }
-            let finder = if d.mount == "/" {
-                super::disk::get_finder_startup_disk_free_bytes()
+            let finder = if d.mount == "/" { finder_free() } else { None };
+            let container_free = if finder.is_none() {
+                info(&d.mount).and_then(|text| {
+                    super::disk::extract_plist_uint(&text, &["APFSContainerFree"]).ok()
+                })
             } else {
                 None
             };
-            let container_free = super::disk::get_apfs_container_free_bytes(&d.mount);
             let (used, used_percent, uncorrected) = super::disk::correct_apfs_disk_usage(
                 &d.mount,
                 d.total,
@@ -1047,6 +1089,39 @@ fn process_alert_json(a: &ProcessAlert) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn disk_corrections_share_successful_and_failed_plist_queries() {
+        let calls = std::cell::Cell::new(0);
+        for response in [Some("<plist><dict><key>TotalSize</key><integer>100000000000</integer><key>APFSContainerFree</key><integer>30000000000</integer></dict></plist>".to_string()), None] {
+            let mut cache = HashMap::new();
+            let fetch = |_: &str| { calls.set(calls.get() + 1); response.clone() };
+            let before = calls.get();
+            let mut probe = |mount: &str| cached_disk_info(mount, &mut cache, &fetch);
+            let disk = DiskUsage { mount: "/".into(), fstype: "apfs".into(), total: 100_000_000_000, used: 80_000_000_000, ..Default::default() };
+            let disks = correct_disk_totals(vec![disk], &mut probe);
+            let _ = correct_apfs_usages(disks, &mut probe, || None);
+            assert_eq!(calls.get() - before, 1, "one query per mount, even on failure");
+        }
+    }
+
+    #[test]
+    fn finder_answer_skips_container_free_probe() {
+        let disk = DiskUsage {
+            mount: "/".into(),
+            fstype: "apfs".into(),
+            total: 100_000_000_000,
+            used: 2_000_000_000,
+            ..Default::default()
+        };
+        let corrected = correct_apfs_usages(
+            vec![disk],
+            &mut |_| panic!("Finder already answered"),
+            || Some((30_000_000_000, 100_000_000_000)),
+        );
+        assert_eq!(corrected[0].used, 70_000_000_000);
+        assert!(!corrected[0].uncorrected);
+    }
 
     #[test]
     fn process_alert_timestamp_is_a_wall_clock_string() {

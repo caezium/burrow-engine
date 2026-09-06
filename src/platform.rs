@@ -603,12 +603,51 @@ pub fn run_command_checked(
     run_configured_command(command, Some(timeout))
 }
 
+thread_local! {
+    static COMMAND_DEADLINE: std::cell::Cell<Option<Instant>> = const { std::cell::Cell::new(None) };
+}
+
+/// One synchronous collection pass shares a deadline instead of restarting a full timeout for
+/// every fallback. The scope is thread-local and restored on unwind; unrelated commands and
+/// long-running actions retain their own budgets.
+pub(crate) fn with_command_budget<T>(budget: Duration, work: impl FnOnce() -> T) -> T {
+    struct Restore(Option<Instant>);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            COMMAND_DEADLINE.set(self.0);
+        }
+    }
+    let deadline = Instant::now().checked_add(budget);
+    let previous = COMMAND_DEADLINE.get();
+    let effective = match (previous, deadline) {
+        (Some(a), Some(b)) => Some(a.min(b)),
+        (a, b) => a.or(b),
+    };
+    let _restore = Restore(previous);
+    COMMAND_DEADLINE.set(effective);
+    work()
+}
+
+pub(crate) fn remaining_command_budget(requested: Duration) -> Duration {
+    COMMAND_DEADLINE.get().map_or(requested, |deadline| {
+        requested.min(deadline.saturating_duration_since(Instant::now()))
+    })
+}
+
 /// The common process pump for collectors and tool delegates. Its deadline includes pipe EOF,
 /// which can outlive the direct child when a descendant inherits stdout.
 pub(crate) fn run_configured_command(
     mut command: Command,
     timeout: Option<Duration>,
 ) -> Result<String, CommandFailure> {
+    let timeout = match (timeout, COMMAND_DEADLINE.get()) {
+        (Some(timeout), _) => Some(remaining_command_budget(timeout)),
+        (None, Some(deadline)) => Some(deadline.saturating_duration_since(Instant::now())),
+        (None, None) => None,
+    };
+    if timeout == Some(Duration::ZERO) {
+        return Err(CommandFailure::TimedOut(Duration::ZERO));
+    }
     configure_child_environment(&mut command)
         .map_err(|e| CommandFailure::NotSpawnable(e.to_string()))?;
     #[cfg(unix)]
@@ -750,6 +789,58 @@ fn stop_child(child: &mut std::process::Child) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn aggregate_command_budget_refuses_new_spawns_and_restores_scope() {
+        with_command_budget(Duration::ZERO, || {
+            let mut command = Command::new("must-not-be-spawned");
+            command.arg("unused");
+            assert!(matches!(
+                run_configured_command(command, Some(Duration::from_secs(5))),
+                Err(CommandFailure::TimedOut(_))
+            ));
+            with_command_budget(Duration::from_secs(5), || {
+                assert_eq!(
+                    remaining_command_budget(Duration::from_secs(1)),
+                    Duration::ZERO
+                );
+            });
+        });
+        assert_eq!(
+            remaining_command_budget(Duration::from_secs(3)),
+            Duration::from_secs(3)
+        );
+        let _ = std::panic::catch_unwind(|| {
+            with_command_budget(Duration::ZERO, || panic!("fixture unwind"))
+        });
+        assert_eq!(
+            remaining_command_budget(Duration::from_secs(3)),
+            Duration::from_secs(3)
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn sequential_probes_share_one_wall_clock_budget() {
+        let start = Instant::now();
+        with_command_budget(Duration::from_millis(120), || {
+            assert!(run_command_checked(
+                "/bin/sh",
+                &["-c", "sleep 0.05; printf first"],
+                Duration::from_secs(2)
+            )
+            .is_ok());
+            assert!(matches!(
+                run_command_checked("/bin/sh", &["-c", "sleep 10"], Duration::from_secs(2)),
+                Err(CommandFailure::TimedOut(_))
+            ));
+            assert_eq!(
+                remaining_command_budget(Duration::from_secs(1)),
+                Duration::ZERO
+            );
+        });
+        assert!(start.elapsed() < Duration::from_secs(1));
+    }
 
     #[test]
     fn architecture_probe_has_a_budget_and_an_explicit_failure_value() {

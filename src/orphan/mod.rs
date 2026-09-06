@@ -360,7 +360,8 @@ pub fn installed_from_cli_csv(csv: &str) -> Vec<InstalledApp> {
         })
         .collect();
     apps.sort_by(|a, b| a.display_name.cmp(&b.display_name));
-    apps.dedup_by(|a, b| a.id == b.id);
+    let mut ids = std::collections::HashSet::new();
+    apps.retain(|app| ids.insert(app.id.clone()));
     apps
 }
 
@@ -921,6 +922,18 @@ mod tests {
     }
 
     #[test]
+    fn installed_from_cli_csv_dedups_nonadjacent_ids_and_keeps_display_order() {
+        let apps = installed_from_cli_csv("FooBar,Foo0,Foo Bar");
+        assert_eq!(
+            apps.iter()
+                .map(|app| app.display_name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["Foo Bar", "Foo0"]
+        );
+        assert_eq!(installed_identifiers(&apps), vec!["foo0", "foobar"]);
+    }
+
+    #[test]
     fn installed_csv_inventory_changes_which_files_are_orphans() {
         // End-to-end proof that the CSV inventory actually drives matching (not just that the
         // struct gets built): "Ghostapp" is strong-tier related to "com.example.ghostapp" (its
@@ -988,22 +1001,32 @@ mod tests {
         // ("Preferences") must not leak: is_protected_location only sees literal components, so
         // a relative "." must be resolved to an absolute path before the check can see
         // "Preferences" in it at all.
+        const CHILD: &str = "BURROW_TEST_ORPHAN_RELATIVE_ROOT";
+        if std::env::var_os(CHILD).is_some() {
+            let hits = scan(Path::new("."), &[]);
+            assert!(
+                hits.is_empty(),
+                "relative Preferences root must be protected: {hits:?}"
+            );
+            return;
+        }
         let base = std::env::temp_dir().join(format!("burrow_orph_relroot_{}", std::process::id()));
         let prefs = base.join("Preferences");
         let _ = std::fs::remove_dir_all(&base);
         std::fs::create_dir_all(&prefs).unwrap();
         std::fs::write(prefs.join("com.deadvendor.oldapp.plist"), "x").unwrap();
-
-        let cwd = std::env::current_dir().unwrap();
-        std::env::set_current_dir(&prefs).unwrap();
-        let hits = scan(Path::new("."), &[]);
-        std::env::set_current_dir(&cwd).unwrap();
-
-        assert!(
-            hits.is_empty(),
-            "a relative root resolving into Preferences must still be protected: {hits:?}"
-        );
+        // cwd is process-global, so change only a child test process's working directory.
+        let result = std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", "orphan::tests::scan_canonicalizes_a_relative_root_before_checking_protected_status"])
+            .env(CHILD, "1")
+            .current_dir(&prefs)
+            .output().unwrap();
         let _ = std::fs::remove_dir_all(&base);
+        assert!(
+            result.status.success(),
+            "{}",
+            String::from_utf8_lossy(&result.stdout)
+        );
     }
 
     #[test]

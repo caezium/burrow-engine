@@ -361,8 +361,8 @@ pub fn log_paths_under(home: Option<&str>) -> Result<(String, String), String> {
 fn log_paths_resolving(home: Result<&str, String>) -> Result<(String, String), String> {
     let default_for = |leaf: &str| -> Result<String, String> {
         home.as_deref()
-            .map(|h| format!("{h}/Library/Logs/mole/{leaf}"))
             .map_err(String::clone)
+            .and_then(|h| default_log_path(h, leaf))
     };
     let ops = checked_log_path(
         "MOLE_OPERATIONS_LOG",
@@ -377,6 +377,15 @@ fn log_paths_resolving(home: Result<&str, String>) -> Result<(String, String), S
         default_for("deletions.log"),
     )?;
     Ok((ops, del))
+}
+
+fn default_log_path(home: &str, leaf: &str) -> Result<String, String> {
+    // An invalid home must not become a root-level or relative audit destination. Check this
+    // only for defaults so a complete, validated override can still work without a home.
+    if !std::path::Path::new(home).is_absolute() || home.chars().any(char::is_control) {
+        return Err(crate::platform::NO_HOME.to_string());
+    }
+    Ok(format!("{home}/Library/Logs/mole/{leaf}"))
 }
 
 /// Read both logs and render the history JSON for the most-recent `limit` sessions/deletions.
@@ -396,6 +405,29 @@ pub fn collect(limit: Option<u64>) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn default_logs_refuse_invalid_homes_before_constructing_paths() {
+        for home in [
+            "",
+            " ",
+            "relative/home",
+            "/Users/example\nother",
+            "/Users/example\0",
+        ] {
+            assert_eq!(
+                default_log_path(home, "operations.log"),
+                Err(crate::platform::NO_HOME.to_string()),
+                "invalid home: {home:?}"
+            );
+        }
+        let home = std::env::temp_dir().join("fixture home ");
+        let home = home.to_str().unwrap();
+        assert_eq!(
+            default_log_path(home, "operations.log").unwrap(),
+            format!("{home}/Library/Logs/mole/operations.log")
+        );
+    }
 
     #[test]
     fn normalize_limit_clamps() {

@@ -266,11 +266,7 @@ pub fn collect_disk_external(device: &str, mount: &str) -> bool {
 /// found. Timeout-bounded at 3 seconds, matching digger's `getDiskutilTotalBytes`
 /// (`metrics_disk.go`).
 pub fn get_diskutil_total_bytes(mountpoint: &str) -> Option<u64> {
-    let out = super::collect::run_command_with_timeout(
-        "diskutil",
-        &["info", "-plist", mountpoint],
-        std::time::Duration::from_secs(3),
-    )?;
+    let out = get_diskutil_info(mountpoint)?;
     extract_plist_uint(&out, &["TotalSize", "DiskSize", "Size"]).ok()
 }
 
@@ -279,12 +275,17 @@ pub fn get_diskutil_total_bytes(mountpoint: &str) -> Option<u64> {
 /// absent (e.g. a non-APFS volume). Timeout-bounded at 3 seconds, matching digger's
 /// `getAPFSContainerFreeBytes` (`metrics_disk.go`).
 pub fn get_apfs_container_free_bytes(mountpoint: &str) -> Option<u64> {
-    let out = super::collect::run_command_with_timeout(
+    let out = get_diskutil_info(mountpoint)?;
+    extract_plist_uint(&out, &["APFSContainerFree"]).ok()
+}
+
+/// One shared plist fetch for the current collection pass's total/free corrections.
+pub(crate) fn get_diskutil_info(mountpoint: &str) -> Option<String> {
+    super::collect::run_command_with_timeout(
         "diskutil",
         &["info", "-plist", mountpoint],
         std::time::Duration::from_secs(3),
-    )?;
-    extract_plist_uint(&out, &["APFSContainerFree"]).ok()
+    )
 }
 
 /// Parse `osascript`'s stdout for the Finder startup-disk query above into `(free, total)` bytes.
@@ -301,7 +302,13 @@ fn parse_finder_startup_disk_free(out: &str) -> Option<(u64, u64)> {
     let (free_s, total_s) = out.trim().split_once(',')?;
     let free: f64 = free_s.trim().parse().ok()?;
     let total: f64 = total_s.trim().parse().ok()?;
-    if free <= 0.0 || total <= 0.0 {
+    if !free.is_finite()
+        || !total.is_finite()
+        || free <= 0.0
+        || total <= 0.0
+        || free >= u64::MAX as f64
+        || total >= u64::MAX as f64
+    {
         return None;
     }
     Some((free as u64, total as u64))
@@ -642,6 +649,15 @@ map -hosts             0        0         0 100% 0 0 100% /net\n\
         // separately by `run_command_with_timeout_kills_a_hanging_child_instead_of_blocking_forever`
         // in `collect.rs`, not re-tested here.
         assert_eq!(parse_finder_startup_disk_free(""), None, "empty stdout");
+        for reading in [
+            "NaN, 100",
+            "100, NaN",
+            "inf, inf",
+            "-inf, 100",
+            "1e30, 1e30",
+        ] {
+            assert_eq!(parse_finder_startup_disk_free(reading), None, "{reading}");
+        }
         assert_eq!(
             parse_finder_startup_disk_free("execution error: Not authorized to send Apple events to Finder. (-1743)"),
             None,

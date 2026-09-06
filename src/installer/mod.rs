@@ -154,6 +154,42 @@ pub fn scan_with(paths: &[String], run: crate::platform::Runner<'_>) -> Vec<Inst
     found
 }
 
+pub fn from_reviewed_paths(paths: &[String], roots: &[String]) -> Result<Vec<Installer>, String> {
+    paths
+        .iter()
+        .map(|path| {
+            let file = Path::new(path);
+            let source = reviewed_source(file, roots).ok_or_else(|| {
+                format!("reviewed installer path is no longer in a download location: {path}")
+            })?;
+            if !(is_direct_installer(path) || (is_zip(path) && is_installer_zip(file))) {
+                return Err(format!("reviewed file is no longer an installer: {path}"));
+            }
+            let metadata = std::fs::metadata(file)
+                .map_err(|e| format!("cannot read reviewed installer: {e}"))?;
+            Ok(Installer {
+                path: path.clone(),
+                size_bytes: metadata.len(),
+                source,
+                identity: file_identity(file),
+            })
+        })
+        .collect()
+}
+
+fn reviewed_source(path: &Path, roots: &[String]) -> Option<String> {
+    if !path.is_file() {
+        return None;
+    }
+    roots
+        .iter()
+        .find(|root| {
+            crate::reviewed_plan::relative_components(path, Path::new(root))
+                .is_some_and(|parts| parts.len() <= SCAN_MAX_DEPTH)
+        })
+        .cloned()
+}
+
 fn walk(
     dir: &Path,
     source: &str,
@@ -243,6 +279,16 @@ pub fn execute(installers: &[Installer], permanent: bool) -> InstallerOutcome {
     execute_with_remover(installers, permanent, remove_one_reported)
 }
 
+pub fn execute_reviewed(
+    installers: &[Installer],
+    roots: &[String],
+    permanent: bool,
+) -> InstallerOutcome {
+    execute_checked_with_remover(installers, permanent, remove_one_reported, |path| {
+        reviewed_source(path, roots).is_some()
+    })
+}
+
 /// The oracle's wording for a candidate that drifted between scan and apply (`installer.sh:604`).
 const CHANGED_SINCE_SCAN: &str = "changed since scan";
 
@@ -254,9 +300,22 @@ fn execute_with_remover(
     permanent: bool,
     remover: impl Fn(&Path, bool) -> Result<Removal, String>,
 ) -> InstallerOutcome {
+    execute_checked_with_remover(installers, permanent, remover, |_| true)
+}
+
+fn execute_checked_with_remover(
+    installers: &[Installer],
+    permanent: bool,
+    remover: impl Fn(&Path, bool) -> Result<Removal, String>,
+    allowed: impl Fn(&Path) -> bool,
+) -> InstallerOutcome {
     let mut outcome = InstallerOutcome::default();
     for i in installers {
         let path = Path::new(&i.path);
+        if !allowed(path) {
+            outcome.protected.push(i.path.clone());
+            continue;
+        }
         let label = path
             .file_name()
             .map(|n| n.to_string_lossy().into_owned())
@@ -448,6 +507,61 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         dir
+    }
+
+    #[test]
+    fn reviewed_plan_does_not_scan_for_later_installers() {
+        let root = scratch("reviewed_exact");
+        let reviewed = root.join("reviewed.dmg");
+        let late = root.join("late.pkg");
+        std::fs::write(&reviewed, "reviewed").unwrap();
+        std::fs::write(&late, "later").unwrap();
+        let roots = vec![root.to_string_lossy().into_owned()];
+        let paths = vec![reviewed.to_string_lossy().into_owned()];
+        let installers = from_reviewed_paths(&paths, &roots).unwrap();
+        assert_eq!(installers.len(), 1);
+        let outcome = execute_checked_with_remover(
+            &installers,
+            true,
+            |path, _| {
+                assert_eq!(path, reviewed);
+                std::fs::remove_file(path).unwrap();
+                Ok(Removal::Removed)
+            },
+            |path| reviewed_source(path, &roots).is_some(),
+        );
+        assert_eq!(outcome.removed.len(), 1);
+        assert!(late.exists());
+        let deep = root.join("a/b/deep.dmg");
+        std::fs::create_dir_all(deep.parent().unwrap()).unwrap();
+        std::fs::write(&deep, "deep").unwrap();
+        assert!(from_reviewed_paths(&[deep.to_string_lossy().into_owned()], &roots).is_err());
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn reviewed_plan_rechecks_installer_parent_aliases_at_apply() {
+        let root = scratch("reviewed_alias");
+        let sub = root.join("sub");
+        std::fs::create_dir_all(&sub).unwrap();
+        let path = sub.join("reviewed.dmg");
+        std::fs::write(&path, "reviewed").unwrap();
+        let roots = vec![root.to_string_lossy().into_owned()];
+        let paths = vec![path.to_string_lossy().into_owned()];
+        let installers = from_reviewed_paths(&paths, &roots).unwrap();
+        std::fs::rename(&sub, root.join("original")).unwrap();
+        std::os::unix::fs::symlink(root.join("original"), &sub).unwrap();
+        assert!(from_reviewed_paths(&paths, &roots).is_err());
+        let outcome = execute_checked_with_remover(
+            &installers,
+            true,
+            |_, _| panic!("must not remove"),
+            |path| reviewed_source(path, &roots).is_some(),
+        );
+        assert_eq!(outcome.protected, paths);
+        assert!(root.join("original/reviewed.dmg").exists());
+        std::fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

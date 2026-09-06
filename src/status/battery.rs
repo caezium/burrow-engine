@@ -130,7 +130,7 @@ pub fn parse_system_power_json(raw: &str) -> Option<SystemPowerInfo> {
     None
 }
 
-/// Fan speed (RPM) from `system_profiler SPPowerDataType` TEXT output: the number on the first
+/// Fan speed (RPM) from `system_profiler SPPowerDataType` TEXT output: the number on the first parseable
 /// line containing both "fan" and "speed" (case-insensitive), read as the token right after the
 /// colon (stopping at the next space). Ported from digger's `collectThermal` (metrics_battery.go)
 /// — its own fan LOOP, not a separate function there, pulled out here so it's independently
