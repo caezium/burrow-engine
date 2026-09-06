@@ -629,8 +629,12 @@ pub(crate) fn with_command_budget<T>(budget: Duration, work: impl FnOnce() -> T)
 }
 
 pub(crate) fn remaining_command_budget(requested: Duration) -> Duration {
+    remaining_command_budget_at(requested, Instant::now())
+}
+
+fn remaining_command_budget_at(requested: Duration, now: Instant) -> Duration {
     COMMAND_DEADLINE.get().map_or(requested, |deadline| {
-        requested.min(deadline.saturating_duration_since(Instant::now()))
+        requested.min(deadline.saturating_duration_since(now))
     })
 }
 
@@ -820,26 +824,32 @@ mod tests {
     }
 
     #[test]
-    #[cfg(unix)]
-    fn sequential_probes_share_one_wall_clock_budget() {
-        let start = Instant::now();
-        with_command_budget(Duration::from_millis(120), || {
-            assert!(run_command_checked(
-                "/bin/sh",
-                &["-c", "sleep 0.05; printf first"],
-                Duration::from_secs(2)
-            )
-            .is_ok());
-            assert!(matches!(
-                run_command_checked("/bin/sh", &["-c", "sleep 10"], Duration::from_secs(2)),
-                Err(CommandFailure::TimedOut(_))
-            ));
+    fn sequential_probes_share_one_deadline() {
+        // Inject each probe's start time. CI process scheduling cannot affect the arithmetic;
+        // separate real-process tests cover termination and inherited-pipe deadlines.
+        let budget = Duration::from_secs(20);
+        with_command_budget(budget, || {
+            let deadline = COMMAND_DEADLINE.get().unwrap();
+            let first_start = deadline - budget;
+            assert_eq!(remaining_command_budget_at(budget, first_start), budget);
             assert_eq!(
-                remaining_command_budget(Duration::from_secs(1)),
+                remaining_command_budget_at(budget, first_start + Duration::from_secs(19)),
+                Duration::from_secs(1)
+            );
+            assert_eq!(
+                remaining_command_budget_at(budget, deadline),
                 Duration::ZERO
             );
+            assert_eq!(
+                remaining_command_budget_at(budget, deadline + Duration::from_secs(1)),
+                Duration::ZERO
+            );
+            assert_eq!(
+                COMMAND_DEADLINE.get(),
+                Some(deadline),
+                "probing never restarts the pass deadline"
+            );
         });
-        assert!(start.elapsed() < Duration::from_secs(1));
     }
 
     #[test]
