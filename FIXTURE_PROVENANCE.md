@@ -53,6 +53,29 @@ Mole V1.42.0 is the historical MIT source identified in
 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md); current upstream licensing is not
 substituted for that pinned revision.
 
+## Duplicate apply capture recipe
+
+The independent apply capture was recorded on 2026-08-08 with the historical shipping
+CLI (version 0.0.1) and fclones 0.35.0. Its fixture was rebuilt before **each** of
+`dupes remove <fixture> --apply`, `dupes link <fixture> --apply`, and
+`dupes dedupe <fixture> --apply`. A second action on an already consumed fixture is
+not equivalent: it can return the structured zero-group skip response.
+
+The controlled fixture contained `a/one.bin` and `b/one_copy.bin` with identical
+9,600-byte content `bytes((i * 7 + 11) % 251 for i in range(9600))`;
+`a/two.bin` and `b/two_copy.bin` shared 7,200 bytes
+`bytes((i * 13 + 29) % 241 for i in range(7200))`. The unique `a/uniq.bin`
+contained `bytes((i * 3 + 5) % 233 for i in range(4096))`. Each capture used a newly
+created temporary directory; no user files were inputs. Discovery found two groups,
+four grouped files, 33,600 grouped bytes and 16,800 redundant bytes.
+
+All three actions emitted empty stdout from fclones, whose progress report went to
+stderr. The historical CLI wrapped that empty stdout as `data: {"text": ""}`;
+this is the apply fixture's contract. Envelope version and engine labels differ in
+the Rust port and are not pinned to that historical CLI. This recipe and behavior
+come from the original capture's provenance and fixture builder, not from output of
+the Rust implementation under test. Public path aliases remain described above.
+
 ## Verification and future updates
 
 `python3 scripts/check_fixtures.py` verifies the public fixture inventory, hashes,

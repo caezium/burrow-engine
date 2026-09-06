@@ -21,6 +21,7 @@ pub mod orphan;
 pub mod photos;
 pub mod platform;
 pub mod purge;
+mod reviewed_plan;
 pub mod rules;
 pub mod sentinel;
 pub mod status;

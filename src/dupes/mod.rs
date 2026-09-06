@@ -339,7 +339,32 @@ fn device_of(_path: &str) -> Option<u64> {
 /// [`crate::platform::resolve_helper`]: only a sidecar beside the engine binary or a copy in a
 /// trusted system directory is run as root.
 pub fn resolve_fclones() -> Result<PathBuf, String> {
-    crate::platform::resolve_helper("fclones", Some("BURROW_FCLONES"), &[]).ok_or_else(|| {
+    let requested = std::env::var_os("BURROW_FCLONES");
+    resolve_fclones_with(
+        requested.as_deref().map(Path::new),
+        crate::platform::is_privileged(),
+        || crate::platform::resolve_helper("fclones", Some("BURROW_FCLONES"), &[]),
+    )
+}
+
+fn resolve_fclones_with(
+    requested: Option<&Path>,
+    privileged: bool,
+    fallback: impl FnOnce() -> Option<PathBuf>,
+) -> Result<PathBuf, String> {
+    // An ordinary caller's explicit override is authoritative. Elevated execution continues to
+    // use the shared trusted-directory policy, which intentionally ignores untrusted env paths.
+    if !privileged {
+        if let Some(path) = requested {
+            return crate::platform::executable_at(path).ok_or_else(|| {
+                format!(
+                    "BURROW_FCLONES executable not found or not runnable: {}",
+                    path.display()
+                )
+            });
+        }
+    }
+    fallback().ok_or_else(|| {
         "fclones not found; install it (cargo install fclones) or set BURROW_FCLONES".to_string()
     })
 }
@@ -511,6 +536,22 @@ mod tests {
             .iter()
             .map(|f| f.as_str().unwrap().to_string())
             .collect()
+    }
+
+    #[test]
+    fn invalid_explicit_fclones_override_never_selects_another_binary() {
+        let missing =
+            std::env::temp_dir().join(format!("burrow_missing_fclones_{}", std::process::id()));
+        assert!(!missing.exists());
+        let error = resolve_fclones_with(Some(&missing), false, || panic!("must not fall back"))
+            .unwrap_err();
+        assert!(error.contains("BURROW_FCLONES"));
+        assert!(error.contains("not runnable"));
+        let trusted = PathBuf::from("trusted-helper");
+        assert_eq!(
+            resolve_fclones_with(Some(&missing), true, || Some(trusted.clone())).unwrap(),
+            trusted
+        );
     }
 
     #[test]

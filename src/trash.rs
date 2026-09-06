@@ -271,7 +271,12 @@ mod tests {
             let run = |_p: &str, _a: &[&str], _t: Duration| -> Option<String> {
                 panic!("must never reach a subprocess call with an unrepresentable path")
             };
-            assert!(move_to_trash_with(&bad, Some(Path::new(TRASH_BIN)), run).is_err());
+            let error = move_to_trash_with(&bad, Some(Path::new(TRASH_BIN)), run).unwrap_err();
+            if cfg!(target_os = "macos") {
+                assert!(error.contains("UTF-8"), "{error}");
+            } else {
+                assert!(error.contains("needs macOS"), "{error}");
+            }
         }
     }
 }

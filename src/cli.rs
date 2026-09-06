@@ -997,7 +997,18 @@ fn purge(args: &[String]) -> (String, i32) {
         Ok(h) => h,
         Err(refusal) => return refusal,
     };
-    let artifacts = crate::purge::scan(&crate::purge::resolve_search_paths(&home));
+    let roots = crate::purge::resolve_search_paths(&home);
+    let reviewed = args.iter().any(|a| a == "--plan");
+    let artifacts = if reviewed {
+        match sweep_plan_paths(args)
+            .and_then(|paths| crate::purge::from_reviewed_paths(&paths, &roots))
+        {
+            Ok(artifacts) => artifacts,
+            Err(error) => return (envelope::error_envelope(VERSION, "purge", &error), 1),
+        }
+    } else {
+        crate::purge::scan(&roots)
+    };
 
     if !apply {
         if stream {
@@ -1020,10 +1031,15 @@ fn purge(args: &[String]) -> (String, i32) {
             "purge",
             Some(&home),
             || {
-                crate::purge::execute_with(&artifacts, permanent, |ev| {
+                let emit = |ev: crate::clean::execute::CleanEvent<'_>| {
                     let _ = writeln!(out, "{}", event_ndjson(&ev));
                     let _ = out.flush();
-                })
+                };
+                if reviewed {
+                    crate::purge::execute_reviewed_with(&artifacts, &roots, permanent, emit)
+                } else {
+                    crate::purge::execute_with(&artifacts, permanent, emit)
+                }
             },
             |log, outcome| {
                 crate::history::write::log_clean_session(
@@ -1043,7 +1059,13 @@ fn purge(args: &[String]) -> (String, i32) {
     let outcome = record_session(
         "purge",
         Some(&home),
-        || crate::purge::execute(&artifacts, permanent),
+        || {
+            if reviewed {
+                crate::purge::execute_reviewed_with(&artifacts, &roots, permanent, |_| {})
+            } else {
+                crate::purge::execute(&artifacts, permanent)
+            }
+        },
         |log, outcome| {
             crate::history::write::log_clean_session(
                 log,
@@ -1077,7 +1099,18 @@ fn installer(args: &[String]) -> (String, i32) {
         Ok(h) => h,
         Err(refusal) => return refusal,
     };
-    let installers = crate::installer::scan(&crate::installer::scan_paths(&home));
+    let roots = crate::installer::scan_paths(&home);
+    let reviewed = args.iter().any(|a| a == "--plan");
+    let installers = if reviewed {
+        match sweep_plan_paths(args)
+            .and_then(|paths| crate::installer::from_reviewed_paths(&paths, &roots))
+        {
+            Ok(installers) => installers,
+            Err(error) => return (envelope::error_envelope(VERSION, "installer", &error), 1),
+        }
+    } else {
+        crate::installer::scan(&roots)
+    };
 
     if !apply {
         let data = crate::installer::to_json(&installers);
@@ -1086,7 +1119,13 @@ fn installer(args: &[String]) -> (String, i32) {
     let outcome = record_session(
         "installer",
         Some(&home),
-        || crate::installer::execute(&installers, permanent),
+        || {
+            if reviewed {
+                crate::installer::execute_reviewed(&installers, &roots, permanent)
+            } else {
+                crate::installer::execute(&installers, permanent)
+            }
+        },
         |log, outcome| {
             crate::history::write::log_clean_session(
                 log,
@@ -1102,6 +1141,15 @@ fn installer(args: &[String]) -> (String, i32) {
         envelope::envelope(VERSION, "installer", ENGINE, &data),
         code,
     )
+}
+
+fn sweep_plan_paths(args: &[String]) -> Result<Vec<String>, String> {
+    let file = args
+        .iter()
+        .position(|a| a == "--plan")
+        .and_then(|index| args.get(index + 1))
+        .ok_or_else(|| "--plan needs a file path".to_string())?;
+    crate::reviewed_plan::read_paths(file)
 }
 
 /// `uninstall <name>… [--apply] [--permanent]` — resolve every named app against the installed
@@ -1560,6 +1608,7 @@ fn allowed_flags(command: &str) -> Option<&'static [FlagSpec]> {
             ("--apply", false),
             ("--permanent", false),
             ("--stream", false),
+            ("--plan", true),
             ("--dry-run", false),
             ("-n", false),
             ("--debug", false),
@@ -1567,6 +1616,7 @@ fn allowed_flags(command: &str) -> Option<&'static [FlagSpec]> {
         "installer" => &[
             ("--apply", false),
             ("--permanent", false),
+            ("--plan", true),
             ("--dry-run", false),
             ("-n", false),
             ("--debug", false),
@@ -2341,6 +2391,13 @@ mod tests {
             out.contains("\"name\":\"rebuild_launch_services\""),
             "{out}"
         );
+        let value = crate::json::Json::parse(&out).unwrap();
+        let text = value
+            .get("data")
+            .and_then(|data| data.get("text"))
+            .and_then(crate::json::Json::as_str)
+            .expect("dry-run text");
+        assert!(!text.trim().is_empty());
         // Dry-run must NOT carry a results array (that's the --apply shape).
         assert!(!out.contains("\"results\":"), "{out}");
     }
@@ -5236,6 +5293,8 @@ mod tests {
          "BUR-142: remove exactly the paths a reviewed dry run listed, without re-scanning \
           (`clean_from_plan`). The oracle has no such mode — it re-scans on every apply, which \
           is the defect the GUI's review screen needed closed."),
+        ("purge", "--plan", "Apply only the artifact paths reviewed by Sweep, repeating scan policy without enumerating new candidates."),
+        ("installer", "--plan", "Apply only the installer paths reviewed by Sweep, repeating classification and namespace checks."),
         ("status", "--interval",
          "the cadence of --watch in seconds (`status_watch`). The oracle spells it \
           --watch-interval with a Go duration string; the engine takes a number so the app and \
@@ -6545,8 +6604,8 @@ mod tests {
         let (code, out) = dispatch_without_a_home("clean --plan", &env);
         assert_eq!(code, 2, "{out}");
         assert!(out.contains("--plan needs a file path"), "{out}");
-        // `--plan` is `clean`'s alone.
-        for other in ["purge", "uninstall", "installer", "optimize"] {
+        // Only filesystem sweep commands accept reviewed plans.
+        for other in ["uninstall", "optimize"] {
             assert!(
                 reject_unknown_flag(other, &args(&["--plan", "/x"])).is_some(),
                 "{other} must not accept --plan"

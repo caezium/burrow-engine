@@ -95,3 +95,13 @@ so what gets removed is what was reviewed, not what a second scan happens to fin
 | `BURROW_PRIVILEGED` | `1` when the privileged helper launched the engine. With it (or an effective uid of 0) helper binaries — `fclones`, `brctl`, `trash`, and the developer tools `clean` may spawn (`uv`, `go`, `pnpm`, `pip3`, …) — are resolved only from trusted locations, never from `PATH`. |
 | `BURROW_TOOLS_DIR` | An extra directory helpers may be taken from in privileged mode — honoured only when it lies inside the engine binary's own directory (the app bundle's `Resources/`). |
 | `BURROW_WATCH_FRAMES` | Bounds `status --watch` to N frames (tests and scripts); unset means until stdout closes. |
+
+## Reviewed Sweep plans
+
+`purge --plan <file>` and `installer --plan <file>` accept an absolute path per line, with
+blank lines and `#` comments ignored. The plan source must be a regular, non-symlink
+UTF-8 file no larger than 8 MiB and contain at most 4,096 paths. They preview only the listed candidates; `--apply`
+executes the same list. A plan never expands to newly discovered files. Each path must still
+match that command's current configured scan roots, depth, classification and protection rules;
+symlinked child namespaces and malformed or empty plans are refused. The app additionally pins
+reviewed file identities and refuses stale plans before launching the engine.

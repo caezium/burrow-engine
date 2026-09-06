@@ -1030,46 +1030,33 @@ fn resolve_trash_path(home: Option<&str>) -> Option<PathBuf> {
 pub fn scan_trash_dir(root: &Path, budget: Duration) -> (u64, bool) {
     let start = Instant::now();
     let mut total = 0u64;
-    let mut timed_out = false;
-    walk_trash(root, &start, budget, &mut total, &mut timed_out);
-    (total, timed_out)
-}
-
-fn walk_trash(
-    dir: &Path,
-    start: &Instant,
-    budget: Duration,
-    total: &mut u64,
-    timed_out: &mut bool,
-) {
-    if *timed_out {
-        return;
-    }
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return; // missing / unreadable directory — contributes nothing, not an error
-    };
-    for entry in entries.flatten() {
-        if start.elapsed() >= budget {
-            *timed_out = true;
-            return;
-        }
-        let path = entry.path();
-        let Ok(meta) = std::fs::symlink_metadata(&path) else {
+    // Keep traversal state on the heap: a deep trashed directory tree must not exhaust the
+    // process stack before the time budget can be checked.
+    let mut pending = vec![root.to_path_buf()];
+    while let Some(dir) = pending.pop() {
+        let Ok(entries) = std::fs::read_dir(dir) else {
             continue;
         };
-        let ft = meta.file_type();
-        if ft.is_symlink() {
-            continue; // neither sized nor followed — matches digger exactly
-        }
-        if ft.is_dir() {
-            walk_trash(&path, start, budget, total, timed_out);
-            if *timed_out {
-                return;
+        for entry in entries.flatten() {
+            if start.elapsed() >= budget {
+                return (total, true);
             }
-        } else {
-            *total += meta.len();
+            let path = entry.path();
+            let Ok(meta) = std::fs::symlink_metadata(&path) else {
+                continue;
+            };
+            let ft = meta.file_type();
+            if ft.is_symlink() {
+                continue;
+            }
+            if ft.is_dir() {
+                pending.push(path);
+            } else {
+                total = total.saturating_add(meta.len());
+            }
         }
     }
+    (total, false)
 }
 
 /// Collect `trash_size`/`trash_approx`: total bytes under `~/.Trash`, bounded to
@@ -1083,7 +1070,10 @@ pub fn collect_trash_size() -> (u64, bool) {
     let Some(trash) = resolve_trash_path(home.as_deref()) else {
         return (0, false);
     };
-    scan_trash_dir(&trash, TRASH_SCAN_TIMEOUT)
+    scan_trash_dir(
+        &trash,
+        crate::platform::remaining_command_budget(TRASH_SCAN_TIMEOUT),
+    )
 }
 
 #[cfg(test)]
@@ -1579,11 +1569,16 @@ CPU usage: 19.32% user, 13.00% sys, 67.66% idle \n";
     }
 
     #[test]
+    #[cfg(target_os = "macos")]
     fn collected_at_live_value_round_trips_through_the_iso8601_regex_shape() {
         // This DOES spawn `date` (it's the live `collect_collected_at`, not the pure formatter) —
         // just checking the end-to-end shape against the real system clock matches the golden's
         // style: "YYYY-MM-DDTHH:MM:SS.NNNNNN(+|-)HH:MM", 32 chars, numeric offset (never `Z`).
         let got = collect_collected_at();
+        assert!(
+            !got.starts_with("1970-"),
+            "the live test must not accept a fallback timestamp"
+        );
         assert_eq!(got.len(), 32, "got {got:?}");
         assert_eq!(&got[4..5], "-");
         assert_eq!(&got[10..11], "T");

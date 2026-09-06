@@ -454,3 +454,84 @@ fn malformed_fat64_sizes_are_refused_before_savings_can_overflow() {
     }
     assert!(parse_fat(&header).is_err());
 }
+
+#[cfg(unix)]
+#[test]
+fn sweep_plan_cli_previews_and_applies_only_the_reviewed_temporary_paths() {
+    use burrow_engine::json::Json;
+    for (command, relative, late_relative, field) in [
+        (
+            "purge",
+            "dev/project/target",
+            "dev/project/node_modules",
+            "artifacts",
+        ),
+        (
+            "installer",
+            "Downloads/reviewed.dmg",
+            "Downloads/late.pkg",
+            "installers",
+        ),
+    ] {
+        let dir = Scratch::new();
+        let reviewed = dir.0.join(relative);
+        let late = dir.0.join(late_relative);
+        fs::create_dir_all(reviewed.parent().unwrap()).unwrap();
+        if command == "purge" {
+            fs::create_dir(&reviewed).unwrap();
+            fs::create_dir(&late).unwrap();
+        } else {
+            fs::write(&reviewed, b"reviewed").unwrap();
+            fs::write(&late, b"later").unwrap();
+        }
+        let plan = dir.0.join("review.plan");
+        fs::write(&plan, format!("# reviewed paths\n{}\n", reviewed.display())).unwrap();
+        let run = |apply: bool, stream: bool| {
+            let mut child = std::process::Command::new(env!("CARGO_BIN_EXE_burrow-engine"));
+            child
+                .args([command, "--plan"])
+                .arg(&plan)
+                .env("BURROW_HOME", &dir.0)
+                .env_remove("PURGE_PATHS_CONFIG");
+            if apply {
+                child.args(["--apply", "--permanent"]);
+            }
+            if stream {
+                child.arg("--stream");
+            }
+            let out = child.output().unwrap();
+            assert!(
+                out.status.success(),
+                "{}",
+                String::from_utf8_lossy(&out.stdout)
+            );
+            String::from_utf8(out.stdout).unwrap()
+        };
+        let preview = Json::parse(&run(false, false)).unwrap();
+        let listed = preview
+            .get("data")
+            .unwrap()
+            .get(field)
+            .unwrap()
+            .as_array()
+            .unwrap();
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].get("path").unwrap().as_str(), reviewed.to_str());
+        assert!(reviewed.exists() && late.exists());
+        if command == "purge" {
+            let stream = run(false, true);
+            assert_eq!(
+                stream.lines().count(),
+                2,
+                "one candidate and one terminal event"
+            );
+            assert!(!stream.contains(late.to_str().unwrap()));
+        }
+        let _ = run(true, command == "purge");
+        assert!(!reviewed.exists());
+        assert!(
+            late.exists(),
+            "unreviewed candidate survives a real fixture apply"
+        );
+    }
+}

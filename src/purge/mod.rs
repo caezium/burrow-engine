@@ -223,6 +223,53 @@ pub fn scan(search_paths: &[String]) -> Vec<Artifact> {
         .collect()
 }
 
+/// Classify only the reviewed paths, with the same depth, pruning and protection rules as scan.
+/// A bad or changed entry refuses the whole plan before any removal begins.
+pub fn from_reviewed_paths(paths: &[String], roots: &[String]) -> Result<Vec<Artifact>, String> {
+    paths
+        .iter()
+        .map(|path| {
+            if !reviewed_path_allowed(Path::new(path), roots) {
+                return Err(format!(
+                    "reviewed purge path is no longer an allowed artifact: {path}"
+                ));
+            }
+            Ok(Artifact {
+                path: path.clone(),
+                size_bytes: crate::analyze::scanner::dir_size(Path::new(path)).max(0) as u64,
+            })
+        })
+        .collect()
+}
+
+fn reviewed_path_allowed(path: &Path, roots: &[String]) -> bool {
+    if !path.is_dir() || is_protected_purge_artifact(path) {
+        return false;
+    }
+    roots.iter().any(|root| {
+        let root = Path::new(root);
+        let Some(parts) = crate::reviewed_plan::relative_components(path, root) else {
+            return false;
+        };
+        let mut current = root.to_path_buf();
+        for (index, part) in parts.iter().enumerate() {
+            current.push(part);
+            let depth = index + 1;
+            let name = part.to_str().unwrap_or("");
+            let target = depth <= MAX_DEPTH && PURGE_TARGETS.contains(&name);
+            let cache = (2..=CACHE_MAX_DEPTH).contains(&depth)
+                && crate::analyze::cleanable::has_valid_cache_dir_tag(&current);
+            if target || cache {
+                return depth == parts.len() && (depth >= 2 || is_project_root(root));
+            }
+            if matches!(name, ".git" | "Library" | ".Trash") || depth >= CACHE_MAX_DEPTH {
+                return false;
+            }
+        }
+        false
+    })
+}
+
 fn walk(dir: &Path, depth: usize, sp_is_project: bool, out: &mut Vec<String>) {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return;
@@ -445,6 +492,17 @@ pub fn execute_with(
     execute_with_remover(artifacts, permanent, emit, remove_one_reported)
 }
 
+pub fn execute_reviewed_with(
+    artifacts: &[Artifact],
+    roots: &[String],
+    permanent: bool,
+    emit: impl FnMut(CleanEvent<'_>),
+) -> PurgeOutcome {
+    execute_checked_with_remover(artifacts, permanent, emit, remove_one_reported, |path| {
+        reviewed_path_allowed(path, roots)
+    })
+}
+
 /// [`execute_with`] with the per-artifact removal function injected — the seam that makes the
 /// permanent/recoverable dispatch testable without a real Trash call. See
 /// `crate::clean::execute`'s identically-shaped split for why (its `remove_one`'s doc comment
@@ -452,14 +510,24 @@ pub fn execute_with(
 fn execute_with_remover(
     artifacts: &[Artifact],
     permanent: bool,
+    emit: impl FnMut(CleanEvent<'_>),
+    remover: impl Fn(&Path, bool) -> Result<Removal, String>,
+) -> PurgeOutcome {
+    execute_checked_with_remover(artifacts, permanent, emit, remover, |_| true)
+}
+
+fn execute_checked_with_remover(
+    artifacts: &[Artifact],
+    permanent: bool,
     mut emit: impl FnMut(CleanEvent<'_>),
     remover: impl Fn(&Path, bool) -> Result<Removal, String>,
+    allowed: impl Fn(&Path) -> bool,
 ) -> PurgeOutcome {
     let mut outcome = PurgeOutcome::default();
     for a in artifacts {
         let path = Path::new(&a.path);
         // Defense in depth: never remove a protected artifact, even if it reached this list.
-        if is_protected_purge_artifact(path) {
+        if !allowed(path) || is_protected_purge_artifact(path) {
             outcome.protected.push(a.path.clone());
             emit(CleanEvent::Protected { path: &a.path });
             continue;
@@ -563,6 +631,88 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         dir
+    }
+
+    #[test]
+    fn reviewed_plan_selects_only_listed_scannable_artifacts() {
+        let root = scratch("reviewed_exact");
+        let reviewed = root.join("project/target");
+        std::fs::create_dir_all(&reviewed).unwrap();
+        std::fs::write(reviewed.join("output"), "reviewed").unwrap();
+        let late = root.join("project/node_modules");
+        std::fs::create_dir_all(&late).unwrap();
+        let roots = vec![root.to_string_lossy().into_owned()];
+        let paths = vec![reviewed.to_string_lossy().into_owned()];
+        let artifacts = from_reviewed_paths(&paths, &roots).unwrap();
+        assert_eq!(
+            artifacts.iter().map(|a| &a.path).collect::<Vec<_>>(),
+            paths.iter().collect::<Vec<_>>()
+        );
+        let remover_calls = std::cell::Cell::new(0);
+        let outcome = execute_checked_with_remover(
+            &artifacts,
+            true,
+            |_| {},
+            |path, _| {
+                remover_calls.set(remover_calls.get() + 1);
+                assert_eq!(path, reviewed);
+                std::fs::remove_dir_all(path).unwrap();
+                Ok(Removal::Removed)
+            },
+            |path| reviewed_path_allowed(path, &roots),
+        );
+        assert!(outcome.errors.is_empty());
+        if crate::clean::validate::RAILS_SPEAK_THIS_PLATFORMS_PATHS {
+            assert_eq!(outcome.removed.len(), 1);
+            assert!(outcome.protected.is_empty());
+            assert_eq!(remover_calls.get(), 1);
+            assert!(!reviewed.exists());
+        } else {
+            // Reviewed-path selection works on Windows, but apply still refuses paths outside
+            // the POSIX protection tables before reaching even an injected remover.
+            assert!(outcome.removed.is_empty());
+            assert_eq!(outcome.protected, paths);
+            assert_eq!(remover_calls.get(), 0);
+            assert!(reviewed.is_dir());
+        }
+        assert!(
+            late.is_dir(),
+            "a candidate discovered after review must stay outside apply"
+        );
+        let arbitrary = root.join("project/documents");
+        std::fs::create_dir_all(&arbitrary).unwrap();
+        assert!(from_reviewed_paths(&[arbitrary.to_string_lossy().into_owned()], &roots).is_err());
+        let nested = late.join("nested/target");
+        std::fs::create_dir_all(&nested).unwrap();
+        assert!(
+            from_reviewed_paths(&[nested.to_string_lossy().into_owned()], &roots).is_err(),
+            "scan prunes a matched ancestor"
+        );
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn reviewed_plan_refuses_a_parent_replaced_by_a_symlink_at_apply() {
+        let root = scratch("reviewed_alias");
+        let reviewed = root.join("project/target");
+        std::fs::create_dir_all(&reviewed).unwrap();
+        let roots = vec![root.to_string_lossy().into_owned()];
+        let paths = vec![reviewed.to_string_lossy().into_owned()];
+        let artifacts = from_reviewed_paths(&paths, &roots).unwrap();
+        std::fs::rename(root.join("project"), root.join("original")).unwrap();
+        std::os::unix::fs::symlink(root.join("original"), root.join("project")).unwrap();
+        assert!(from_reviewed_paths(&paths, &roots).is_err());
+        let outcome = execute_checked_with_remover(
+            &artifacts,
+            true,
+            |_| {},
+            |_, _| panic!("must not remove"),
+            |path| reviewed_path_allowed(path, &roots),
+        );
+        assert_eq!(outcome.protected, paths);
+        assert!(root.join("original/target").is_dir());
+        std::fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
