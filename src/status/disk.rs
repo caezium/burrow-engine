@@ -460,8 +460,8 @@ pub fn dedupe_by_fstype_and_total(disks: Vec<DiskUsage>) -> Vec<DiskUsage> {
         .collect()
 }
 
-/// Final ordering + cap: internal disks before external, then largest total first, keeping only
-/// the top 3 — matches digger's `collectDisksWithCorrections` tail exactly:
+/// Final ordering + cap: the startup/root volume first, then internal disks before external,
+/// then largest total first, keeping only the top 3.
 /// ```go
 /// sort.Slice(disks, func(i, j int) bool {
 ///     if disks[i].External != disks[j].External { return !disks[i].External }
@@ -475,9 +475,11 @@ pub fn dedupe_by_fstype_and_total(disks: Vec<DiskUsage>) -> Vec<DiskUsage> {
 /// added.
 pub fn sort_and_cap_disks(mut disks: Vec<DiskUsage>) -> Vec<DiskUsage> {
     disks.sort_by(|a, b| {
-        a.external
+        (b.mount == "/")
+            .cmp(&(a.mount == "/")) // the running system always owns the primary HUD slot
+            .then_with(|| a.external
             .cmp(&b.external) // false (internal) sorts before true (external)
-            .then_with(|| b.total.cmp(&a.total)) // larger total first
+            .then_with(|| b.total.cmp(&a.total))) // larger total first
     });
     disks.truncate(3);
     disks
@@ -1017,5 +1019,16 @@ map -hosts             0        0         0 100% 0 0 100% /net\n\
             out[1].mount,
             "/Library/Developer/CoreSimulator/Volumes/iOS_23B86"
         );
+    }
+
+    #[test]
+    fn sort_and_cap_disks_keeps_external_startup_volume_first() {
+        let mut internal = du("/dev/disk0s1", "/Volumes/Macintosh HD", "apfs", 245_000_000_000);
+        internal.external = false;
+        let mut startup = du("/dev/disk5s2s1", "/", "apfs", 1_000_000_000_000);
+        startup.external = true;
+
+        let out = sort_and_cap_disks(vec![internal, startup]);
+        assert_eq!(out[0].mount, "/", "startup disk must drive the HUD even when external");
     }
 }
